@@ -19,11 +19,6 @@ contract PredictionMarket {
         uint totalPredictionStake;
     }
 
-    modifier onlyOracle() {
-        require(msg.sender == oracle);
-        _;
-    }
-
     modifier afterSettled() {
         require(settled);
         _;
@@ -65,24 +60,32 @@ contract PredictionMarket {
         }
     }
 
-    function predict(bytes32 prediction, uint amount) public {
+    function choose(bytes32 _outcome, uint _amount) public {
+        if (msg.sender == oracle) {
+            settle(_outcome);
+        } else {
+            predict(_outcome, _amount);
+        }
+    }
+
+    function predict(bytes32 _outcome, uint _amount) private {
         if (settled) {
             revert();
         }
 
-        if (amount == 0 || availableBalances[msg.sender] < amount) {
+        if (_amount == 0 || availableBalances[msg.sender] < _amount) {
             revert();
         }
 
-        availableBalances[msg.sender] -= amount;
-        predictions[prediction].stakes[msg.sender] += amount;
-        predictions[prediction].totalPredictionStake += amount;
-        totalMarketStake += amount;
+        availableBalances[msg.sender] -= _amount;
+        predictions[_outcome].stakes[msg.sender] += _amount;
+        predictions[_outcome].totalPredictionStake += _amount;
+        totalMarketStake += _amount;
 
-        Stake(msg.sender, prediction, amount);
+        Stake(msg.sender, _outcome, _amount);
     }
 
-    function settle(bytes32 _outcome) public onlyOracle {
+    function settle(bytes32 _outcome) private {
         if (settled) {
             revert();
         }
