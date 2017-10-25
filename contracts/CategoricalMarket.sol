@@ -1,6 +1,6 @@
 pragma solidity ^0.4.18;
 
-contract PredictionMarket {
+contract CategoricalPredictionMarket {
     address public oracle;
     uint public totalMarketStake;
     mapping (address => uint) public availableBalances;
@@ -24,7 +24,7 @@ contract PredictionMarket {
         _;
     }
 
-    function PredictionMarket(address _oracle) public {
+    function CategoricalPredictionMarket(address _oracle) public {
         oracle = _oracle;
         settled = false;
     }
