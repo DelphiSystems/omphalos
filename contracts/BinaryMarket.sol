@@ -11,11 +11,21 @@ pragma solidity ^0.4.18;
  *
 \*************************************************************************/
 contract BinaryPredictionMarket {
+    /******************\
+     *  Market State  *
+     ********************************************************************\
+     *  @dev The different possible market states:
+     *       Active: predictions can be made
+     *       Locked: predictions/claims cannot be made
+     *       Finalized: claims can be made
+    \********************************************************************/
+    enum State { Active, Locked, Finalized }
+
+    State public state;                                 // Current market state
     address public oracle;                              // Outcome data provider
     uint public totalMarketStake;                       // Cumulative value staked on predictions
     mapping (address => uint) public availableBalances; // Depositable/withrawable user accounts
     mapping (bool => Prediction) public predictions;    // Map true/false values to user predictions
-    bool public settled;                                // Has the oracle finalized the outcome?
     bool public outcome;                                // Final outcome (whether true or false)
 
     /************\
@@ -42,13 +52,13 @@ contract BinaryPredictionMarket {
     /**************\
      *  Modifiers
     \**************/
-    modifier afterSettled() {
-        require(settled);
+    modifier onState(State s) {
+        require(state == s);
         _;
     }
 
-    modifier beforeSettled() {
-        require(!settled);
+    modifier onlyOracle() {
+        require(msg.sender == oracle);
         _;
     }
 
@@ -134,10 +144,10 @@ contract BinaryPredictionMarket {
 
     /********************************************************************\
      *  @dev Claim function for users to collect on winning predictions
-     *  Can only be called after a market is settled by its oracle
+     *  Can only be called after a market is finalized by its oracle
      *  (which necessarily means that outcome is set)
     \********************************************************************/
-    function claim() public afterSettled {
+    function claim() public onState(State.Finalized) {
         // Retrieve the total stake that the user assigned to the correct prediction
         uint userStake = getCorrectStake(msg.sender);
         if (userStake == 0) {
@@ -157,6 +167,14 @@ contract BinaryPredictionMarket {
         Claim(msg.sender, outcome, reward);
     }
 
+    /************************************************************************\
+     *  @dev Lock function to prevent continued predictions
+     *  Can only be called by the oracle and while a market is still active
+    \************************************************************************/
+    function lock() public onState(State.Active) onlyOracle {
+        state = State.Locked;
+    }
+
     /************************\
      *  Accessor functions  *
      ************************************************************\
@@ -174,7 +192,7 @@ contract BinaryPredictionMarket {
      *  @param _predictor User whose stake is being retrieved
      *  @return Prediction stake value (in wei)
     \***********************************************************/
-    function getCorrectStake(address _predictor) public view afterSettled returns (uint) {
+    function getCorrectStake(address _predictor) public view onState(State.Finalized) returns (uint) {
         return predictions[outcome].stakes[_predictor];
     }
 
@@ -187,7 +205,7 @@ contract BinaryPredictionMarket {
      *
      *  Only callable by non-oracle users
     \*********************************************************/
-    function predict(bool _outcome, uint _amount) private beforeSettled {
+    function predict(bool _outcome, uint _amount) private onState(State.Active) {
         // Ensure funds are available
         if (_amount == 0 || availableBalances[msg.sender] < _amount) {
             revert();
@@ -211,7 +229,10 @@ contract BinaryPredictionMarket {
      *  @param _outcome Final result from oracle (true/false)
      *  Only callable by linked oracle (and only once)
     \**********************************************************/
-    function settle(bool _outcome) private beforeSettled {
+    function settle(bool _outcome) private {
+        // Allow settle to be called from any state except a finalized one
+        require(state != State.Finalized);
+
         // Do not bother trying to settle an empty market
         if (totalMarketStake == 0) {
             revert();
@@ -220,7 +241,7 @@ contract BinaryPredictionMarket {
         // Set correct outcome value
         outcome = _outcome;
         // Finalize market
-        settled = true;
+        state = State.Finalized;
 
         // Fire Settled (oracle input) event
         Settled(_outcome);

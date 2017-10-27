@@ -11,11 +11,21 @@ pragma solidity ^0.4.18;
  *
 \*************************************************************************/
 contract CategoricalPredictionMarket {
+    /******************\
+     *  Market State  *
+     ********************************************************************\
+     *  @dev The different possible market states:
+     *       Active: predictions can be made
+     *       Locked: predictions/claims cannot be made
+     *       Finalized: claims can be made
+    \********************************************************************/
+    enum State { Active, Locked, Finalized }
+
+    State public state;                                 // Current market state
     address public oracle;                              // Outcome data provider
     uint public totalMarketStake;                       // Cumulative value staked on predictions
     mapping (address => uint) public availableBalances; // Depositable/withrawable user accounts
     mapping (bytes32 => Prediction) public predictions; // Map of categories to user predictions
-    bool public settled;                                // Has the oracle finalized the outcome?
     bytes32 public outcome;                             // Final outcome (correct category)
 
     /************\
@@ -42,13 +52,13 @@ contract CategoricalPredictionMarket {
     /**************\
      *  Modifiers
     \**************/
-    modifier afterSettled() {
-        require(settled);
+    modifier onState(State s) {
+        require(state == s);
         _;
     }
 
-    modifier beforeSettled() {
-        require(!settled);
+    modifier onlyOracle() {
+        require(msg.sender == oracle);
         _;
     }
 
@@ -135,10 +145,10 @@ contract CategoricalPredictionMarket {
 
     /********************************************************************\
      *  @dev Claim function for users to collect on winning predictions
-     *  Can only be called after a market is settled by its oracle
+     *  Can only be called after a market is finalized by its oracle
      *  (which necessarily means that outcome is set)
     \********************************************************************/
-    function claim() public afterSettled {
+    function claim() public onState(State.Finalized) {
         // Retrieve the total stake that the user assigned to the correct prediction
         uint userStake = getCorrectStake(msg.sender);
         if (userStake == 0) {
@@ -158,6 +168,14 @@ contract CategoricalPredictionMarket {
         Claim(msg.sender, outcome, reward);
     }
 
+    /************************************************************************\
+     *  @dev Lock function to prevent continued predictions
+     *  Can only be called by the oracle and while a market is still active
+    \************************************************************************/
+    function lock() public onState(State.Active) onlyOracle {
+        state = State.Locked;
+    }
+
     /************************\
      *  Accessor functions  *
      ************************************************************\
@@ -175,7 +193,7 @@ contract CategoricalPredictionMarket {
      *  @param _predictor User whose stake is being retrieved
      *  @return Prediction stake value (in wei)
     \***********************************************************/
-    function getCorrectStake(address _predictor) public view afterSettled returns (uint) {
+    function getCorrectStake(address _predictor) public view onState(State.Finalized) returns (uint) {
         return predictions[outcome].stakes[_predictor];
     }
 
@@ -188,7 +206,7 @@ contract CategoricalPredictionMarket {
      *
      *  Only callable by non-oracle users
     \*********************************************************/
-    function predict(bytes32 _outcome, uint _amount) private beforeSettled {
+    function predict(bytes32 _outcome, uint _amount) private onState(State.Active) {
         // Ensure funds are available
         if (_amount == 0 || availableBalances[msg.sender] < _amount) {
             revert();
@@ -209,10 +227,13 @@ contract CategoricalPredictionMarket {
 
     /********************************************************\
      *  @dev Settle function (helper function for choose())
-     *  @param _outcome User's categorical prediction value
-     *  Only callable by linked oracle
+     *  @param _outcome Final category result from oracle
+     *  Only callable by linked oracle (and only once)
     \********************************************************/
-    function settle(bytes32 _outcome) private beforeSettled {
+    function settle(bytes32 _outcome) private {
+        // Allow settle to be called from any state except a finalized one
+        require(state != State.Finalized);
+
         // Do not bother trying to settle an empty market
         if (totalMarketStake == 0) {
             revert();
@@ -221,7 +242,7 @@ contract CategoricalPredictionMarket {
         // Set correct outcome value
         outcome = _outcome;
         // Finalize market
-        settled = true;
+        state = State.Finalized;
 
         // Fire Settled (oracle input) event
         Settled(_outcome);
