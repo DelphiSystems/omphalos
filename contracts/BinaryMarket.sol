@@ -1,5 +1,10 @@
 pragma solidity ^0.4.18;
 
+contract Pylon {
+    function get(address oracle, address register) public constant returns (bytes32 value);
+    function getStatus(address oracle, address register) public constant returns (uint status);
+}
+
 /*************************************************************************\
  *   Omphalos: Binary Prediction Market
  *
@@ -21,8 +26,8 @@ contract BinaryPredictionMarket {
     \********************************************************************/
     enum State { Active, Locked, Finalized }
 
-    State public state;                                 // Current market state
-    address public oracle;                              // Outcome data provider
+    address public pylon;                               // Pylon registry contract
+    address public oracle;                              // Oracle in pylon registry
     uint public totalMarketStake;                       // Cumulative value staked on predictions
     mapping (address => uint) public availableBalances; // Depositable/withrawable user accounts
     mapping (bool => Prediction) public predictions;    // Map true/false values to user predictions
@@ -35,7 +40,7 @@ contract BinaryPredictionMarket {
     event Deposit(address indexed _from, uint _amount);                  // User makes deposit
     event Withdrawal(address indexed _to, uint _amount);                 // User makes withdrawal
     event Claim(address indexed _to, bool _prediction, uint _amount);    // User claims winnings
-    event Settled(bool _outcome);                                        // Oracle settles outcome
+    event Settled(bool _outcome);                                        // Outcome settled (pylon pull)
     
     /*************\
      *  Structs  *
@@ -53,12 +58,8 @@ contract BinaryPredictionMarket {
      *  Modifiers
     \**************/
     modifier onState(State s) {
-        require(state == s);
-        _;
-    }
-
-    modifier onlyOracle() {
-        require(msg.sender == oracle);
+        // Make sure relevant pylon registry is in the correct state
+        require(State(Pylon(pylon).getStatus(oracle, this)) == s);
         _;
     }
 
@@ -66,9 +67,11 @@ contract BinaryPredictionMarket {
      *  Public functions
      ********************************************************\
      *  @dev Constructor
-     *  @param _oracle Address of oracle linked to contract
+     *  @param _pylon Address of pylon registry pulled from
+     *  @param _oracle Address of oracle in pylon registry
     \********************************************************/
-    function BinaryPredictionMarket(address _oracle) public {
+    function BinaryPredictionMarket(address _pylon, address _oracle) public {
+        pylon = _pylon;
         oracle = _oracle;
     }
 
@@ -131,15 +134,9 @@ contract BinaryPredictionMarket {
      *  @param _outcome Prediction (or result)
      *  @param _amount Stake value (in wei)
      *  When called by a user, stakes a prediction
-     *  When called by oracle, finalizes market to _outcome value
-     *  Note: _amount is ignored when function is called by oracle
     \***************************************************************/
     function choose(bool _outcome, uint _amount) public {
-        if (msg.sender == oracle) {
-            settle(_outcome);
-        } else {
-            predict(_outcome, _amount);
-        }
+        predict(_outcome, _amount);
     }
 
     /********************************************************************\
@@ -165,14 +162,6 @@ contract BinaryPredictionMarket {
 
         // Fire Claim event
         Claim(msg.sender, outcome, reward);
-    }
-
-    /************************************************************************\
-     *  @dev Lock function to prevent continued predictions
-     *  Can only be called by the oracle and while a market is still active
-    \************************************************************************/
-    function lock() public onState(State.Active) onlyOracle {
-        state = State.Locked;
     }
 
     /************************\
@@ -225,25 +214,24 @@ contract BinaryPredictionMarket {
     }
 
     /**********************************************************\
-     *  @dev Settle function (helper function for choose())
-     *  @param _outcome Final result from oracle (true/false)
-     *  Only callable by linked oracle (and only once)
+     *  @dev Settle function (pulls from pylon registry)
     \**********************************************************/
-    function settle(bool _outcome) private {
-        // Allow settle to be called from any state except a finalized one
-        require(state != State.Finalized);
-
+    function settle() public onState(State.Finalized) {
         // Do not bother trying to settle an empty market
         if (totalMarketStake == 0) {
             revert();
         }
 
         // Set correct outcome value
-        outcome = _outcome;
-        // Finalize market
-        state = State.Finalized;
+        if (Pylon(pylon).get(oracle, this) > 0) {
+            // Anything other than zero is interpreted as true
+            outcome = true;
+        } else {
+            // Technically unnecessary operation, but aids with readability
+            outcome = false;
+        }
 
         // Fire Settled (oracle input) event
-        Settled(_outcome);
+        Settled(outcome);
     }
 }

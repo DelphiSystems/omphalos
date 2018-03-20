@@ -1,5 +1,10 @@
 pragma solidity ^0.4.18;
 
+contract Pylon {
+    function get(address oracle, address register) public constant returns (bytes32 value);
+    function getStatus(address oracle, address register) public constant returns (uint status);
+}
+
 /*************************************************************************\
  *   Omphalos: Categorical Prediction Market
  *
@@ -21,8 +26,8 @@ contract CategoricalPredictionMarket {
     \********************************************************************/
     enum State { Active, Locked, Finalized }
 
-    State public state;                                 // Current market state
-    address public oracle;                              // Outcome data provider
+    address public pylon;                               // Pylon registry contract
+    address public oracle;                              // Oracle in pylon registry
     uint public totalMarketStake;                       // Cumulative value staked on predictions
     mapping (address => uint) public availableBalances; // Depositable/withrawable user accounts
     mapping (bytes32 => Prediction) public predictions; // Map of categories to user predictions
@@ -35,7 +40,7 @@ contract CategoricalPredictionMarket {
     event Deposit(address indexed _from, uint _amount);                     // User makes deposit
     event Withdrawal(address indexed _to, uint _amount);                    // User makes withdrawal
     event Claim(address indexed _to, bytes32 _prediction, uint _amount);    // User claims winnings
-    event Settled(bytes32 _outcome);                                        // Oracle settles outcome
+    event Settled(bytes32 _outcome);                                        // Outcome settled (pylon pull)
 
     /*************\
      *  Structs  *
@@ -53,12 +58,8 @@ contract CategoricalPredictionMarket {
      *  Modifiers
     \**************/
     modifier onState(State s) {
-        require(state == s);
-        _;
-    }
-
-    modifier onlyOracle() {
-        require(msg.sender == oracle);
+        // Make sure relevant pylon registry is in the correct state
+        require(State(Pylon(pylon).getStatus(oracle, this)) == s);
         _;
     }
 
@@ -66,10 +67,11 @@ contract CategoricalPredictionMarket {
      *  Public functions
      ********************************************************\
      *  @dev Constructor
-     *  @param _oracle Address of oracle linked to contract
-    \********************************************************/
-    function CategoricalPredictionMarket(address _oracle) public {
-        // Link oracle to contract
+     *  @param _pylon Address of pylon registry pulled from
+     *  @param _oracle Address of oracle in pylon registry
+     \********************************************************/
+    function CategoricalPredictionMarket(address _pylon, address _oracle) public {
+        pylon = _pylon;
         oracle = _oracle;
     }
 
@@ -132,15 +134,9 @@ contract CategoricalPredictionMarket {
      *  @param _outcome Prediction (or result)
      *  @param _amount Stake value (in wei)
      *  When called by a user, stakes a categorical prediction
-     *  When called by oracle, finalizes market to _outcome value
-     *  Note: _amount is ignored when function is called by oracle
     \***************************************************************/
     function choose(bytes32 _outcome, uint _amount) public {
-        if (msg.sender == oracle) {
-            settle(_outcome);
-        } else {
-            predict(_outcome, _amount);
-        }
+        predict(_outcome, _amount);
     }
 
     /********************************************************************\
@@ -166,14 +162,6 @@ contract CategoricalPredictionMarket {
 
         // Fire Claim event
         Claim(msg.sender, outcome, reward);
-    }
-
-    /************************************************************************\
-     *  @dev Lock function to prevent continued predictions
-     *  Can only be called by the oracle and while a market is still active
-    \************************************************************************/
-    function lock() public onState(State.Active) onlyOracle {
-        state = State.Locked;
     }
 
     /************************\
@@ -226,25 +214,18 @@ contract CategoricalPredictionMarket {
     }
 
     /********************************************************\
-     *  @dev Settle function (helper function for choose())
-     *  @param _outcome Final category result from oracle
-     *  Only callable by linked oracle (and only once)
+     *  @dev Settle function (pulls from pylon registry)
     \********************************************************/
-    function settle(bytes32 _outcome) private {
-        // Allow settle to be called from any state except a finalized one
-        require(state != State.Finalized);
-
+    function settle() public onState(State.Finalized) {
         // Do not bother trying to settle an empty market
         if (totalMarketStake == 0) {
             revert();
         }
 
         // Set correct outcome value
-        outcome = _outcome;
-        // Finalize market
-        state = State.Finalized;
+        outcome = Pylon(pylon).get(oracle, this);
 
         // Fire Settled (oracle input) event
-        Settled(_outcome);
+        Settled(outcome);
     }
 }
