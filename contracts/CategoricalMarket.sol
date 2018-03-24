@@ -82,8 +82,8 @@ contract CategoricalPredictionMarket {
         // Credit user's available balance
         availableBalances[msg.sender] += msg.value;
 
-        // Fire Deposit event
-        Deposit(msg.sender, msg.value);
+        // Emit Deposit event
+        emit Deposit(msg.sender, msg.value);
     }
 
     /*********************************************\
@@ -102,8 +102,8 @@ contract CategoricalPredictionMarket {
 
         // Send withdrawal
         if (msg.sender.send(_amount)) {
-            // Fire Withdrawal event
-            Withdrawal(msg.sender, _amount);
+            // Emit Withdrawal event
+            emit Withdrawal(msg.sender, _amount);
         }
     }
 
@@ -124,8 +124,8 @@ contract CategoricalPredictionMarket {
 
         // Send full withdrawal
         if (msg.sender.send(withdrawal)) {
-            // Fire Withdrawal event
-            Withdrawal(msg.sender, withdrawal);
+            // Emit Withdrawal event
+            emit Withdrawal(msg.sender, withdrawal);
         }
     }
 
@@ -160,8 +160,8 @@ contract CategoricalPredictionMarket {
         // Credit winnings to user's available balance
         availableBalances[msg.sender] += reward;
 
-        // Fire Claim event
-        Claim(msg.sender, outcome, reward);
+        // Emit Claim event
+        emit Claim(msg.sender, outcome, reward);
     }
 
     /************************\
@@ -209,8 +209,8 @@ contract CategoricalPredictionMarket {
         // Increment market's total staked balance
         totalMarketStake += _amount;
 
-        // Fire Stake (user prediction) event
-        Stake(msg.sender, _outcome, _amount);
+        // Emit Stake (user prediction) event
+        emit Stake(msg.sender, _outcome, _amount);
     }
 
     /********************************************************\
@@ -225,7 +225,7 @@ contract CategoricalPredictionMarket {
         // Set correct outcome value
         outcome = Pylon(pylon).get(oracle, this);
 
-        // Fire Settled (oracle input) event
-        Settled(outcome);
+        // Emit Settled (oracle input) event
+        emit Settled(outcome);
     }
 }
