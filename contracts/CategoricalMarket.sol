@@ -134,8 +134,18 @@ contract CategoricalPredictionMarket {
      *  @param _outcome Prediction (or result)
      *  @param _amount Stake value (in wei)
      *  When called by a user, stakes a categorical prediction
+     *  Can optionally include a deposit for an all-in-one call
     \***************************************************************/
-    function choose(bytes32 _outcome, uint _amount) public {
+    function choose(bytes32 _outcome, uint _amount) public payable {
+        // Optional deposit before prediction
+        if (msg.value > 0) {
+            // Credit user's available balance
+            availableBalances[msg.sender] += msg.value;
+
+            // Fire Deposit event
+            emit Deposit(msg.sender, msg.value);
+        }
+
         predict(_outcome, _amount);
     }
 
