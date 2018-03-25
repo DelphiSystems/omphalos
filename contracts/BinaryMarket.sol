@@ -33,6 +33,7 @@ contract BinaryPredictionMarket {
     mapping (address => uint) public availableBalances; // Depositable/withrawable user accounts
     mapping (bool => Prediction) public predictions;    // Map true/false values to user predictions
     bool public outcome;                                // Final outcome (whether true or false)
+    bool public settled;                                // Track whether settle() has been called
 
     /************\
      *  Events  *
@@ -61,6 +62,11 @@ contract BinaryPredictionMarket {
     modifier onState(State s) {
         // Make sure relevant pylon registry is in the correct state
         require(State(Pylon(pylon).getStatus(oracle, register)) == s);
+        _;
+    }
+
+    modifier marketSettled() {
+        require(settled);
         _;
     }
 
@@ -157,7 +163,7 @@ contract BinaryPredictionMarket {
      *  Can only be called after a market is finalized by its oracle
      *  (which necessarily means that outcome is set)
     \********************************************************************/
-    function claim() public onState(State.Finalized) {
+    function claim() public onState(State.Finalized) marketSettled {
         // Retrieve the total stake that the user assigned to the correct prediction
         uint userStake = getCorrectStake(msg.sender);
         if (userStake == 0) {
@@ -177,6 +183,15 @@ contract BinaryPredictionMarket {
         emit Claim(msg.sender, outcome, reward);
     }
 
+    /***********************************************************************\
+     *  @dev Shortcut function to claim and withdraw all funds
+     *  Allows an all-in-one function for users to call after finalization
+    \***********************************************************************/
+    function claimAndWithdrawAll() public {
+        claim();
+        withdrawAll();
+    }
+
     /************************\
      *  Accessor functions  *
      ************************************************************\
@@ -194,7 +209,7 @@ contract BinaryPredictionMarket {
      *  @param _predictor User whose stake is being retrieved
      *  @return Prediction stake value (in wei)
     \***********************************************************/
-    function getCorrectStake(address _predictor) public view onState(State.Finalized) returns (uint) {
+    function getCorrectStake(address _predictor) public view onState(State.Finalized) marketSettled returns (uint) {
         return predictions[outcome].stakes[_predictor];
     }
 
@@ -235,6 +250,9 @@ contract BinaryPredictionMarket {
             revert();
         }
 
+        // Function should only be called once (sanity check)
+        require(!settled);
+
         // Set correct outcome value
         if (Pylon(pylon).get(oracle, register) > 0) {
             // Anything other than zero is interpreted as true
@@ -243,6 +261,7 @@ contract BinaryPredictionMarket {
             // Technically unnecessary operation, but aids with readability
             outcome = false;
         }
+        settled = true;
 
         // Emit Settled (oracle input) event
         emit Settled(outcome);

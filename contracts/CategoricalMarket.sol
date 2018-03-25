@@ -33,6 +33,7 @@ contract CategoricalPredictionMarket {
     mapping (address => uint) public availableBalances; // Depositable/withrawable user accounts
     mapping (bytes32 => Prediction) public predictions; // Map of categories to user predictions
     bytes32 public outcome;                             // Final outcome (correct category)
+    bool public settled;                                // Track whether settle() has been called
 
     /************\
      *  Events  *
@@ -61,6 +62,11 @@ contract CategoricalPredictionMarket {
     modifier onState(State s) {
         // Make sure relevant pylon registry is in the correct state
         require(State(Pylon(pylon).getStatus(oracle, register)) == s);
+        _;
+    }
+
+    modifier marketSettled() {
+        require(settled);
         _;
     }
 
@@ -157,7 +163,7 @@ contract CategoricalPredictionMarket {
      *  Can only be called after a market is finalized by its oracle
      *  (which necessarily means that outcome is set)
     \********************************************************************/
-    function claim() public onState(State.Finalized) {
+    function claim() public onState(State.Finalized) marketSettled {
         // Retrieve the total stake that the user assigned to the correct prediction
         uint userStake = getCorrectStake(msg.sender);
         if (userStake == 0) {
@@ -177,6 +183,15 @@ contract CategoricalPredictionMarket {
         emit Claim(msg.sender, outcome, reward);
     }
 
+    /***********************************************************************\
+     *  @dev Shortcut function to claim and withdraw all funds
+     *  Allows an all-in-one function for users to call after finalization
+    \***********************************************************************/
+    function claimAndWithdrawAll() public {
+        claim();
+        withdrawAll();
+    }
+
     /************************\
      *  Accessor functions  *
      ************************************************************\
@@ -194,7 +209,7 @@ contract CategoricalPredictionMarket {
      *  @param _predictor User whose stake is being retrieved
      *  @return Prediction stake value (in wei)
     \***********************************************************/
-    function getCorrectStake(address _predictor) public view onState(State.Finalized) returns (uint) {
+    function getCorrectStake(address _predictor) public view onState(State.Finalized) marketSettled returns (uint) {
         return predictions[outcome].stakes[_predictor];
     }
 
@@ -235,8 +250,12 @@ contract CategoricalPredictionMarket {
             revert();
         }
 
+        // Function should only be called once (sanity check)
+        require(!settled);
+
         // Set correct outcome value
         outcome = Pylon(pylon).get(oracle, register);
+        settled = true;
 
         // Emit Settled (oracle input) event
         emit Settled(outcome);
