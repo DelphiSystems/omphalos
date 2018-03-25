@@ -142,7 +142,7 @@ contract BinaryPredictionMarket {
             // Credit user's available balance
             availableBalances[msg.sender] += msg.value;
 
-            // Fire Deposit event
+            // Emit Deposit event
             emit Deposit(msg.sender, msg.value);
         }
 
