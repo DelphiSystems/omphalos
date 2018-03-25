@@ -132,9 +132,19 @@ contract BinaryPredictionMarket {
      *  @param _amount Stake value (in wei)
      *  When called by a user, stakes a prediction
      *  When called by oracle, finalizes market to _outcome value
+     *  Can optionally include a deposit for an all-in-one call
      *  Note: _amount is ignored when function is called by oracle
     \***************************************************************/
-    function choose(bool _outcome, uint _amount) public {
+    function choose(bool _outcome, uint _amount) public payable {
+        // Optional deposit before prediction
+        if (msg.value > 0) {
+            // Credit user's available balance
+            availableBalances[msg.sender] += msg.value;
+
+            // Emit Deposit event
+            emit Deposit(msg.sender, msg.value);
+        }
+
         if (msg.sender == oracle) {
             settle(_outcome);
         } else {
