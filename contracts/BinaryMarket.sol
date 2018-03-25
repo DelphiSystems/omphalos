@@ -79,8 +79,8 @@ contract BinaryPredictionMarket {
         // Credit user's available balance
         availableBalances[msg.sender] += msg.value;
 
-        // Fire Deposit event
-        Deposit(msg.sender, msg.value);
+        // Emit Deposit event
+        emit Deposit(msg.sender, msg.value);
     }
 
     /*********************************************\
@@ -99,8 +99,8 @@ contract BinaryPredictionMarket {
 
         // Send withdrawal
         if (msg.sender.send(_amount)) {
-            // Fire Withdrawal event
-            Withdrawal(msg.sender, _amount);
+            // Emit Withdrawal event
+            emit Withdrawal(msg.sender, _amount);
         }
     }
 
@@ -121,8 +121,8 @@ contract BinaryPredictionMarket {
 
         // Send full withdrawal
         if (msg.sender.send(withdrawal)) {
-            // Fire Withdrawal event
-            Withdrawal(msg.sender, withdrawal);
+            // Emit Withdrawal event
+            emit Withdrawal(msg.sender, withdrawal);
         }
     }
 
@@ -163,8 +163,8 @@ contract BinaryPredictionMarket {
         // Credit winnings to user's available balance
         availableBalances[msg.sender] += reward;
 
-        // Fire Claim event
-        Claim(msg.sender, outcome, reward);
+        // Emit Claim event
+        emit Claim(msg.sender, outcome, reward);
     }
 
     /************************************************************************\
@@ -220,8 +220,8 @@ contract BinaryPredictionMarket {
         // Increment market's total staked balance
         totalMarketStake += _amount;
 
-        // Fire Stake (user prediction) event
-        Stake(msg.sender, _outcome, _amount);
+        // Emit Stake (user prediction) event
+        emit Stake(msg.sender, _outcome, _amount);
     }
 
     /**********************************************************\
@@ -243,7 +243,7 @@ contract BinaryPredictionMarket {
         // Finalize market
         state = State.Finalized;
 
-        // Fire Settled (oracle input) event
-        Settled(_outcome);
+        // Emit Settled (oracle input) event
+        emit Settled(_outcome);
     }
 }
