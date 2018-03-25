@@ -1,8 +1,8 @@
 pragma solidity ^0.4.18;
 
 contract Pylon {
-    function get(address oracle, address register) public constant returns (bytes32 value);
-    function getStatus(address oracle, address register) public constant returns (uint status);
+    function get(address oracle, bytes32 register) public constant returns (bytes32 value);
+    function getStatus(address oracle, bytes32 register) public constant returns (uint status);
 }
 
 /*************************************************************************\
@@ -28,6 +28,7 @@ contract BinaryPredictionMarket {
 
     address public pylon;                               // Pylon registry contract
     address public oracle;                              // Oracle in pylon registry
+    bytes32 public register;                            // Pylon register field
     uint public totalMarketStake;                       // Cumulative value staked on predictions
     mapping (address => uint) public availableBalances; // Depositable/withrawable user accounts
     mapping (bool => Prediction) public predictions;    // Map true/false values to user predictions
@@ -59,7 +60,7 @@ contract BinaryPredictionMarket {
     \**************/
     modifier onState(State s) {
         // Make sure relevant pylon registry is in the correct state
-        require(State(Pylon(pylon).getStatus(oracle, this)) == s);
+        require(State(Pylon(pylon).getStatus(oracle, register)) == s);
         _;
     }
 
@@ -69,10 +70,12 @@ contract BinaryPredictionMarket {
      *  @dev Constructor
      *  @param _pylon Address of pylon registry pulled from
      *  @param _oracle Address of oracle in pylon registry
+     *  @param _register Register field in pylon contract
     \********************************************************/
-    function BinaryPredictionMarket(address _pylon, address _oracle) public {
+    function BinaryPredictionMarket(address _pylon, address _oracle, bytes32 _register) public {
         pylon = _pylon;
         oracle = _oracle;
+        register = _register;
     }
 
     /**************************\
@@ -233,7 +236,7 @@ contract BinaryPredictionMarket {
         }
 
         // Set correct outcome value
-        if (Pylon(pylon).get(oracle, this) > 0) {
+        if (Pylon(pylon).get(oracle, register) > 0) {
             // Anything other than zero is interpreted as true
             outcome = true;
         } else {
